@@ -9,9 +9,8 @@ This repository contains data for the CARL project.
 ```
 git clone git@github.com:stanford-ppl/comal.git
 ```
-3. Switch branch to `calibration-refactor`
-4. Run `git submodule update --init --recursive` to pull in the latest version of [Tortilla](https://github.com/stanford-ppl/tortilla/), the protobuffer definition of Comal Graphs
-5. Install [Protoc](protobuf.dev/programming-guides/proto3/)
+3. Run `git submodule update --init --recursive` to pull in the latest version of [Tortilla](https://github.com/stanford-ppl/tortilla/), the protobuffer definition of Comal Graphs
+4. Install [Protoc](protobuf.dev/programming-guides/proto3/)
 
 # Running Carl
 Carl is a Comal driver which accepts Comal graphs with file-defined inputs, and prints the elapsed cycles -- suitable for parsing as part of a larger tool flow.
