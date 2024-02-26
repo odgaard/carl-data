@@ -1,0 +1,7 @@
+startup_delay = 0
+data_load_factor = 0
+initial_delay = 0
+output_latency = 18
+sequential_interval = 1
+miss_latency = 0
+row_size = 4
