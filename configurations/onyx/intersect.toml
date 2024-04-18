@@ -1,0 +1,6 @@
+startup_delay = 0
+stop_latency = 0
+output_latency = 1
+sequential_interval = 1
+val_stop_delay = 0
+val_advance_delay = 1
