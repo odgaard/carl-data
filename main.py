@@ -6,10 +6,17 @@ import proto_grpc.config_service_pb2_grpc as cs_grpc
 
 
 class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
+
+    def __init__(self, benchmark):
+        self.benchmark = benchmark
+        if benchmark == "rdscanner":
+            self.config_file_name = "compressed_read_scanner.toml"
+        if benchmark == "intersect":
+            self.config_file_name = "intersect.toml"
+
     async def RunConfigurationsClientServer(self, request, context):
         query = await self.convert_request(request)
-        config_file_name = "compressed_read_scanner.toml"
-        self.write_configuration(query, config_file_name)
+        self.write_configuration(query)
 
         metrics = []
         result = await self.run(query)
@@ -22,7 +29,7 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
             feasible=cs.Feasible(value=True)
         )
 
-    def write_configuration(self, config_dict, config_file):
+    def write_configuration(self, config_dict):
         # Initialize an empty list to hold each line of the TOML content
         toml_lines = []
 
@@ -33,7 +40,7 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
 
         # Join all lines into a single string with newlines
         toml_string = "\n".join(toml_lines)
-        with open(config_file, "w") as toml_file:
+        with open(self.config_file_name, "w", encoding='utf-8') as toml_file:
             toml_file.write(toml_string)
 
             # Write the TOML string to a file
@@ -45,7 +52,7 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await process.communicate()
+        stdout, _ = await process.communicate()
         # Parse stdout to get metrics
         # Split on colon, take second element, strip of whitespace, and convert to int
         measured_cycles = int(stdout.decode().split(":")[1].strip())
@@ -57,33 +64,52 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
         cycle_error = abs(measured_cycles - correct_cycles)
         return [cycle_error]
 
+    async def write_config(self, query, config_file):
+        with open(config_file, encoding='utf-8', mode="w") as f:
+            for param in query.keys():
+                f.write(f"{param} = {query[param]}\n")
+            #f.write(f"startup_delay = {query['startup_delay']}\n")
+            #f.write(f"data_load_factor = {query['data_load_factor']}\n")
+            #f.write(f"initial_delay = {query['initial_delay']}\n")
+            #f.write(f"output_latency = {query['output_latency']}\n")
+            #f.write(f"sequential_interval = {query['sequential_interval']}\n")
+            #f.write(f"miss_latency = {query['miss_latency']}\n")
+            #f.write(f"row_size = {query['row_size']}")
 
     async def run(self, query):
+        benchmark = self.benchmark
+
+        if benchmark == "rdscanner":
+            sim_name = "crd_rd_scan"
+            bin_name = "crdrdscan.bin"
+            config_flag = "--compressed-read-config"
+        if benchmark == "intersect":
+            sim_name = "intersect"
+            bin_name = "intersect.bin"
+            config_flag = "--intersect-config"
+
         carl_path = "."
-        config_file_name = "compressed_read_scanner.toml"
-        sim_path = f"{carl_path}/apps/crd_rd_scan"
+        sim_path = f"{carl_path}/apps/{sim_name}"
         comal_path = "./comal"
 
-        config_file_path = f"{carl_path}/configurations/onyx/{config_file_name}"
+        config_file_path = f"{carl_path}/configurations/onyx/{self.config_file_name}"
 
-        with open(config_file_path, encoding='utf-8', mode="w") as f:
-            f.write(f"startup_delay = {query['startup_delay']}\n")
-            f.write(f"data_load_factor = {query['data_load_factor']}\n")
-            f.write(f"initial_delay = {query['initial_delay']}\n")
-            f.write(f"output_latency = {query['output_latency']}\n")
-            f.write(f"sequential_interval = {query['sequential_interval']}\n")
-            f.write(f"miss_latency = {query['miss_latency']}\n")
-            f.write(f"row_size = {query['row_size']}")
-
+        await self.write_config(query, config_file_path)
 
         tests = [f"test{i}" for i in range(10)]
         metrics = {}
         for test in tests:
             command = f"{comal_path}/target/release/carl --proto " + \
-                f"{sim_path}/crdrdscan.bin " + \
-                f"--data {sim_path}/{test}/ " + \
-                f"-c {sim_path}/{test}/input.toml " + \
-                f"--compressed-read-config {config_file_path}"
+                f"{sim_path}/{bin_name} " + \
+                f"--data {sim_path}/{test}/ "
+            input_files = {
+                "rdscanner": ["input.toml"],
+                "intersect": ["input_crd1.toml", "input_crd2.toml", "input_ref1.toml", "input_ref2.toml"]
+            }
+            for input_file in input_files[benchmark]:
+                command += f"-c {sim_path}/{test}/{input_file} "
+
+            command += f"{config_flag} {config_file_path}"
             correct_cycles_file = f"{sim_path}/{test}/target.txt"
             metrics[f"cycle_error_{test}"] = await self.run_test(
                 query, test, command, correct_cycles_file)
@@ -118,13 +144,14 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
         return query
 
 class Server():
-    def __init__(self, port: int = 50051):
+    def __init__(self, port: int = 50051, benchmark="rdscanner"):
         self.port = port
+        self.benchmark = benchmark
 
     async def serve(self) -> None:
         server = grpc.aio.server()
         cs_grpc.add_ConfigurationServiceServicer_to_server(
-            ConfigurationServiceServicer(), server)
+            ConfigurationServiceServicer(self.benchmark), server)
         listen_addr = f'[::]:{self.port}'
         server.add_insecure_port(listen_addr)
         print(f'Serving on {listen_addr}')
@@ -136,6 +163,15 @@ class Server():
 
 
 
+# Add argparser
+import argparse
+
 if __name__ == "__main__":
-    server = Server()
+
+    argparser = argparse.ArgumentParser(description="Configuration Service")
+    argparser.add_argument("--benchmark", default="rdscanner", type=str, help="Benchmark to run")
+    argparser.add_argument("--port", default=50051, type=int, help="Port to run the server on")
+    args = argparser.parse_args()
+
+    server = Server(benchmark=args.benchmark, port=args.port)
     server.start()
