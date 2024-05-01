@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Build the Rust application
 RUN git clone https://github.com/stanford-ppl/comal
-RUN cd comal && git submodule update --init --recursive && cargo build -r --bin carl
+RUN cd comal && git checkout carl && git submodule update --init --recursive && cargo build -r --bin carl
 
 # Create a virtual environment and activate it
 RUN python3 -m venv venv
