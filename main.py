@@ -1,8 +1,13 @@
-import grpc
+import logging
 import asyncio
 
+import grpc
 import proto_grpc.config_service_pb2 as cs
 import proto_grpc.config_service_pb2_grpc as cs_grpc
+
+
+logging.basicConfig(filename='carl.log', level=logging.DEBUG,
+                    filemode='w', format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
@@ -47,6 +52,7 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
 
     async def run_test(self, query, test, command, correct_cycles_file):
         # Use subprocess to run command
+        logging.info(f"Running test {test} with command: {command}")
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
@@ -55,7 +61,10 @@ class ConfigurationServiceServicer(cs_grpc.ConfigurationServiceServicer):
         stdout, _ = await process.communicate()
         # Parse stdout to get metrics
         # Split on colon, take second element, strip of whitespace, and convert to int
-        measured_cycles = int(stdout.decode().split(":")[1].strip())
+        response = stdout.decode()
+        logging.info(response)
+
+        measured_cycles = int(response.split(":")[1].strip())
 
         # Read int from file
         with open(correct_cycles_file, encoding='utf-8', mode="r") as file:
